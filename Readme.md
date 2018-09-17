@@ -2,6 +2,8 @@
 
 "Speak the name, and death will come"
 
+Version
+
 ## Installation
 
 Minimum Go version of 1.10 (may work on earlier versions too I guess)
@@ -45,3 +47,5 @@ Agents can do whatever you'd like. The DNS listener has bash, powershell, and go
 
 Inspiration for this was taken from merlin, http/2 c2 built by Ne0nD0g. Please go and look at it, it's very good.
 https://github.com/Ne0nD0g/merlin
+
+Thanks to all the 'beta' testers at Hivint, Asterisk and Bishop Fox. Putting up with my janky on the spot 'please git pull now' fixes is the most hacker thing anyone can do.
