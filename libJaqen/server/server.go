@@ -206,7 +206,8 @@ func (j *JaqenServer) listenResponses() {
 func (j *JaqenServer) addResponse(c Command) {
 	//gzzzzz need to keep map of responses so we can return later
 	r := c.Response
-	if string(c.Response[len(c.Response)-1]) == "\n" {
+
+	if len(c.Response) > 1 && string(c.Response[len(c.Response)-1]) == "\n" {
 		r = r[:len(c.Response)-1]
 
 	}

