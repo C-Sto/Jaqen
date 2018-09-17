@@ -30,6 +30,16 @@ Create a listener, set the listener settings, and generate an agent to deploy on
 
 There are two listeners included - DNS and TCP. Additional listeners will be added in time, but they are intended to only be a template. Successful red teaming will require custom listeners/agents to achieve objectives. Basic AV evasion techniques are displayed in the DNS golang agent.
 
+### DNS
+
+To set a DNS listener, you must have the ability to set records for the domain of choice.
+
+- Set an A record pointing to the server you are running the jaqen listener on. This must be an externally accessible location, as it's likely that intermediate nameservers will be querying rather than the client (`c1.supershady.ru -> 8.8.8.8`)
+- Set a NS record pointing to the A record (`c2.supershady.ru -> c1.supershady.ru`)
+- Set the 'domain' setting on the listener to the NS record (`set domain c2.supershady.ru`)
+
+**IMPORTANT NOTE** Using the default DNS listener, all traffic is _unencryped_ and will be traversing across potentially uncontrolled networks. The responses are literally just hex encoded and smashed onto a subdomain. Stay tuned for an encrypted version. Please don't send/receive anything sensitive over this channel.
+
 ## Custom Listener
 
 The listener plugs into the main C2 that you control via the CLI. The listener simply has to conform to the 'Listener' interface. The interface can be seen in the [interface](libJaqen/server/interface.go) source file. Any 'struct' type that implements every one of the functions defined in the interface will conform to the interface, and you will be able to add it to the [cli](cli/cli.go) file.
