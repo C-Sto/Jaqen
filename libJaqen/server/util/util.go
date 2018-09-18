@@ -11,7 +11,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
-	"fmt"
 )
 
 //https://blog.questionable.services/article/generating-secure-random-numbers-crypto-rand/
@@ -81,7 +80,6 @@ func EncryptStringToHex(plaintext string, key []byte) (string, error) {
 
 func Decrypt(ct, key []byte) ([]byte, error) {
 	//check MAC before anything else
-	fmt.Println(len(ct))
 	ctmac := ct[:crypto.SHA256.Size()]
 
 	mac := hmac.New(crypto.SHA256.New, key)
