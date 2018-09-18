@@ -45,7 +45,7 @@ func DoTest() {
 
 func printVersion() string {
 
-	return "0.0.1"
+	return "0.0.2"
 }
 
 func printStatus() string {

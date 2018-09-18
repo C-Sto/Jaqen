@@ -12,8 +12,7 @@ import (
 
 func main() {
 
-	color.New().Println(`
-....''.....'''''''''''''......'''''';o0KK00OOOkkkk
+	color.New().Println(`....''.....'''''''''''''......'''''';o0KK00OOOkkkk
 ''''''''''''''''..'...'''''''''''''';oOKK00OOOOkkk
 .'''''''''''''''........'''...'''..';oOKK0OOOOOOkk
 ..........''''.....'''''.......'''..,oOKK0OOOOOOOO
@@ -37,9 +36,7 @@ func main() {
 ',;;;;,,''........'';;;;::cc::cllodxkOO0KKKKKKKKKk
 ,,;;;;;,,'''''',;;;::;::ccc:clclooxkkkkOO00KKXXKKK
 ',,,,,;,,'',,,,cocc::cccc::lolooooc:;,;;::cok0KKKK
-',,,',,,,''',,:odoccccclccldodoc;...'';;,''';lOKKK
-
-`)
+',,,',,,,''',,:odoccccclccldodoc;...'';;,''';lOKKK`)
 	color.New().Println(randomQuote())
 
 	cli.Shell()

@@ -22,12 +22,17 @@ func (d JaqenEncryptedDNSListener) genGolangAgent() []byte {
 
 	codeStruct := server.AgentCode{
 
-		Imports: `*/	
+		Imports: `*/
+		_ "crypto/sha256"	
 		"crypto/aes"
 		"crypto/cipher"
+		"crypto"
+		"crypto/hmac"
 		csrand "crypto/rand"
 		"encoding/base64"
 		"encoding/hex"
+		"errors"
+		"bytes"
 		"fmt"
 		"net"
 		"os"
@@ -40,19 +45,72 @@ func (d JaqenEncryptedDNSListener) genGolangAgent() []byte {
 			if e != nil {
 				return []byte{}, e
 			}
+			iv, e := generateRandomBytes(aes.BlockSize)
 		
-			mode, e := cipher.NewGCM(block) //, iv)
-			ct := []byte{}
+			mode := cipher.NewCBCEncrypter(block, iv) //, iv []byte) NewGCM(block) //, iv)
 		
-			iv, e := generateRandomBytes(mode.NonceSize())
+			pt, e := pkcs7Pad([]byte(plaintext), aes.BlockSize)
+			ct := make([]byte, len(pt))
 		
-			//mode.CryptBlocks(ct, []byte(plaintext))
-			ct = mode.Seal(nil, iv, []byte(plaintext), nil)
+			mode.CryptBlocks(ct, pt)
 		
 			ct = append(iv, ct...)
+		
+			//authenticate
+			mac := hmac.New(crypto.SHA256.New, key)
+			mac.Write(ct)
+			mmac := mac.Sum(nil)
+		
+			ct = append(mmac, ct...)
 			return ct, nil
 		}
+		var (
+			// ErrInvalidBlockSize indicates hash blocksize <= 0.
+			ErrInvalidBlockSize = errors.New("invalid blocksize")
 		
+			// ErrInvalidPKCS7Data indicates bad input to PKCS7 pad or unpad.
+			ErrInvalidPKCS7Data = errors.New("invalid PKCS7 data (empty or not padded)")
+		
+			// ErrInvalidPKCS7Padding indicates PKCS7 unpad fails to bad input.
+			ErrInvalidPKCS7Padding = errors.New("invalid padding on input")
+		)
+		func pkcs7Pad(b []byte, blocksize int) ([]byte, error) {
+			if blocksize <= 0 {
+				return nil, nil
+			}
+			if b == nil || len(b) == 0 {
+				return nil, ErrInvalidPKCS7Data
+			}
+			n := blocksize - (len(b) % blocksize)
+			pb := make([]byte, len(b)+n)
+			copy(pb, b)
+			copy(pb[len(b):], bytes.Repeat([]byte{byte(n)}, n))
+			return pb, nil
+		}
+		
+		func pkcs7Unpad(b []byte, blocksize int) ([]byte, error) {
+			if blocksize <= 0 {
+				return nil, ErrInvalidBlockSize
+			}
+			if b == nil || len(b) == 0 {
+				return nil, ErrInvalidPKCS7Data
+			}
+			if len(b)%blocksize != 0 {
+				return nil, ErrInvalidPKCS7Padding
+			}
+			c := b[len(b)-1]
+			n := int(c)
+			if n == 0 || n > len(b) {
+				return nil, ErrInvalidPKCS7Padding
+			}
+			for i := 0; i < n; i++ {
+				if b[len(b)-n+i] != c {
+					return nil, ErrInvalidPKCS7Padding
+				}
+			}
+			return b[:len(b)-n], nil
+		}
+
 		func generateRandomBytes(n int) ([]byte, error) {
 			b := make([]byte, n)
 			_, err := csrand.Read(b)
@@ -65,22 +123,35 @@ func (d JaqenEncryptedDNSListener) genGolangAgent() []byte {
 		}
 		
 		func decrypt(ct, key []byte) ([]byte, error) {
+			ctmac := ct[:crypto.SHA256.Size()]
+
+			mac := hmac.New(crypto.SHA256.New, key)
+			mac.Write(ct[crypto.SHA256.Size():])
+			ourmac := mac.Sum(nil)
+		
+			if !hmac.Equal(ctmac, ourmac) {
+				return []byte{}, errors.New("HMAC Fail")
+			}
+		
+			ct = ct[crypto.SHA256.Size():]
+		
 			block, e := aes.NewCipher(key)
 			if e != nil {
 				return []byte{}, e
 			}
 		
-			mode, e := cipher.NewGCM(block) //, iv)
+			mode := cipher.NewCBCDecrypter(block, ct[:aes.BlockSize]) //NewGCM(block) //, iv)
 			if e != nil {
 				return []byte{}, e
 			}
-			pt := []byte{}
 		
-			iv := ct[:mode.NonceSize()]
-			ct = ct[mode.NonceSize():]
+			ct = ct[aes.BlockSize:]
+			pt := make([]byte, len(ct))
 		
-			pt, e = mode.Open(nil, iv, ct, nil)
-			//mode.CryptBlocks(pt, ct)
+			mode.CryptBlocks(pt, ct)
+		
+			//unpad
+			pt, e = pkcs7Unpad(pt, aes.BlockSize)
 		
 			return pt, e
 		}
