@@ -189,7 +189,9 @@ func Shell() {
 						continue
 					}
 				}
-				fmt.Println("Agent not found")
+				if state.GetContext() != "agentinteract" {
+					fmt.Println("Agent not found")
+				}
 			case "back":
 				state.SetContext("main", "")
 			}
