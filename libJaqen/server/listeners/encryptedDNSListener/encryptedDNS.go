@@ -25,7 +25,6 @@ type JaqenEncryptedDNSListener struct {
 	dnsCheckinChan  chan dnsresponse
 	dnsResponseChan chan dnsresponse
 	closeChan       chan struct{}
-	CommandChan     chan server.CommandSignal
 	CheckinChan     chan server.Checkin
 	ResponseChan    chan server.Command
 	pendingCommands map[string][]string
@@ -95,7 +94,6 @@ func (d *JaqenEncryptedDNSListener) Init() (server.SignalChans, error) {
 	d.dnsCheckinChan = make(chan dnsresponse, 200)
 
 	d.CheckinChan = make(chan server.Checkin, 10)
-	d.CommandChan = make(chan server.CommandSignal, 10)
 	d.ResponseChan = make(chan server.Command, 10)
 	d.options["domain"] = ""
 	d.options["split"] = "60"

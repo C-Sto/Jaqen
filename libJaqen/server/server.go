@@ -83,7 +83,7 @@ func (j *JaqenServer) GetAgents() func(string) []string {
 
 	return func(line string) []string {
 		a := make([]string, 0)
-		for k, _ := range j.activeAgents { //other options go here?
+		for k := range j.activeAgents { //other options go here?
 			a = append(a, k)
 		}
 		return a
@@ -91,11 +91,10 @@ func (j *JaqenServer) GetAgents() func(string) []string {
 
 }
 
-//exec
 func (j *JaqenServer) AgentExecute(agent, command string) {
 	//get agent
-	j.aMut.Lock()
-	defer j.aMut.Unlock()
+	j.aMut.RLock()
+	defer j.aMut.RUnlock()
 
 	a := j.activeAgents[agent]
 
@@ -114,7 +113,7 @@ func (j *JaqenServer) AgentGetOutput(agent, command string) {
 
 }
 
-//kill
+//AgentKill sends a kill command to the specified agent
 func (j *JaqenServer) AgentKill(agent string) {
 	j.aMut.Lock()
 	defer j.aMut.Unlock()
@@ -216,6 +215,7 @@ func (j *JaqenServer) addResponse(c Command) {
 	}
 }
 
+//GetListeners returns a slice of listener info objects
 func (j *JaqenServer) GetListeners() []ListenerInfo {
 	j.lMutex.RLock()
 	defer j.lMutex.RUnlock()
@@ -229,12 +229,14 @@ func (j *JaqenServer) GetListeners() []ListenerInfo {
 	return r
 }
 
+//StopListener calls the 'Stop()' function on the specified listener
 func (j *JaqenServer) StopListener(k string) {
 	j.lMutex.Lock()
 	defer j.lMutex.Unlock()
 	j.listeners[k].Stop()
 }
 
+//RemoveListener will stop and remove the specified listener
 func (j *JaqenServer) RemoveListener(k string) {
 	j.lMutex.Lock()
 	defer j.lMutex.Unlock()
@@ -244,6 +246,7 @@ func (j *JaqenServer) RemoveListener(k string) {
 	delete(j.listeners, k)
 }
 
+//AddListener will add (but will not start) a listener to the listener list
 func (j *JaqenServer) AddListener(l Listener) (string, error) {
 	j.lMutex.Lock()
 	defer j.lMutex.Unlock()
@@ -271,6 +274,7 @@ func (j *JaqenServer) AddListener(l Listener) (string, error) {
 	return name, nil
 }
 
+//SetOption will set the specified options for the specified listener
 func (j *JaqenServer) SetOption(listener, option, value string) {
 	j.lMutex.Lock()
 	defer j.lMutex.Unlock()

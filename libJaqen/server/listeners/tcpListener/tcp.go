@@ -11,42 +11,19 @@ import (
 	"github.com/c-sto/Jaqen/libJaqen/server"
 )
 
-func newAgent(con net.Conn, outChan chan tcpResponse) *agent {
-	writer := bufio.NewWriter(con)
-	reader := bufio.NewReader(con)
-
-	a := &agent{
-		inChan:  make(chan string),
-		outChan: outChan,
-		conn:    con,
-		reader:  reader,
-		writer:  writer,
-	}
-
-	a.Listen()
-
-	return a
-}
-
 type tcpResponse struct {
 	UID  string
 	resp byte
 }
 
 type JaqenTCPListener struct {
-	options    map[string]string
-	optionsMut *sync.RWMutex
-	//dnsCommandChan  chan dnsresponse
-	//	dnsCheckinChan  chan dnsresponse
-	//	dnsResponseChan chan dnsresponse
-	tcpResponseChan chan tcpResponse //byte
+	options         server.ListenerOptions
+	tcpResponseChan chan tcpResponse
+	CheckinChan     chan server.Checkin
+	ResponseChan    chan server.Command
 
-	CommandChan  chan server.CommandSignal
-	CheckinChan  chan server.Checkin
-	ResponseChan chan server.Command
-
-	agents map[string]*agent
-
+	agents          map[string]*agent
+	aMut            *sync.RWMutex
 	pendingCommands map[string][]string
 	pcMut           *sync.RWMutex
 
@@ -70,19 +47,15 @@ func (t *JaqenTCPListener) marshalResponses() {
 }
 
 func (t *JaqenTCPListener) Init() (server.SignalChans, error) {
-	x := new(sync.RWMutex)
-	t.optionsMut = x
-	t.options = make(map[string]string)
+	t.options = server.ListenerOptions{}.New()
 	t.pendingCommands = make(map[string][]string)
 	t.pcMut = &sync.RWMutex{}
-	//t.dnsCheckinChan = make(chan dnsresponse, 200)
-	//d.dnsCommandChan = make(chan dnsresponse, 200)
+	t.aMut = &sync.RWMutex{}
 	t.CheckinChan = make(chan server.Checkin, 10)
-	t.CommandChan = make(chan server.CommandSignal, 10)
 	t.ResponseChan = make(chan server.Command, 10)
 	t.tcpResponseChan = make(chan tcpResponse, 1)
-	t.options["port"] = ""
-	t.options["ip"] = ""
+	t.options.Set("port", "4444")
+	t.options.Set("ip", "0.0.0.0")
 
 	t.agents = make(map[string]*agent)
 
@@ -99,9 +72,12 @@ func (t *JaqenTCPListener) Init() (server.SignalChans, error) {
 }
 
 func (t *JaqenTCPListener) listen() {
-	l, err := net.Listen("tcp", ":"+t.options["port"])
+	port, _ := t.options.Get("port")
+	ip, _ := t.options.Get("ip")
+	l, err := net.Listen("tcp", ip+":"+port)
 	if err != nil {
 		fmt.Println(err) //signal not running
+		t.Stop()
 		return
 	}
 	for {
@@ -111,8 +87,9 @@ func (t *JaqenTCPListener) listen() {
 		}
 		go func() {
 			a := newAgent(conn, t.tcpResponseChan)
-			t.scheduleCheckins(a, conn)
+			t.aMut.Lock()
 			t.agents[a.GetID()] = a
+			t.aMut.Unlock()
 			t.CheckinChan <- server.Checkin{
 				UID:          a.GetID(),
 				ListenerName: t.GetName(),
@@ -127,6 +104,7 @@ func (t *JaqenTCPListener) listenCheckins() {
 	for {
 		select {
 		case <-tix.C:
+			t.aMut.Lock()
 			for k, v := range t.agents {
 				if !v.Running {
 					delete(t.agents, k)
@@ -139,12 +117,26 @@ func (t *JaqenTCPListener) listenCheckins() {
 				}
 
 			}
+			t.aMut.Unlock()
 		}
 	}
 }
 
-func (t *JaqenTCPListener) scheduleCheckins(a *agent, c net.Conn) {
+func newAgent(con net.Conn, outChan chan tcpResponse) *agent {
+	writer := bufio.NewWriter(con)
+	reader := bufio.NewReader(con)
 
+	a := &agent{
+		inChan:  make(chan string),
+		outChan: outChan,
+		conn:    con,
+		reader:  reader,
+		writer:  writer,
+	}
+
+	a.Listen()
+
+	return a
 }
 
 func (t JaqenTCPListener) GetName() string {
@@ -152,30 +144,18 @@ func (t JaqenTCPListener) GetName() string {
 }
 
 func (t *JaqenTCPListener) SetOption(k, v string) {
-	t.optionsMut.Lock()
-	defer t.optionsMut.Unlock()
-	t.options[k] = v
+	t.options.Set(k, v)
 }
 
 func (t *JaqenTCPListener) GetOption(s string) (string, error) {
-	t.optionsMut.RLock()
-	defer t.optionsMut.RUnlock()
-	if x, ok := t.options[s]; ok {
+	if x, ok := t.options.Get(s); ok {
 		return x, nil
 	}
 	return "", errors.New("Option not found")
 }
 
 func (t *JaqenTCPListener) GetOptions() func(string) []string {
-	t.optionsMut.RLock()
-	defer t.optionsMut.RUnlock()
-	return func(line string) []string {
-		a := make([]string, 0)
-		for k, _ := range t.options { //other options go here?
-			a = append(a, k)
-		}
-		return a
-	}
+	return t.options.GetKeys()
 }
 
 func (t *JaqenTCPListener) Kill(id string) {
@@ -183,10 +163,13 @@ func (t *JaqenTCPListener) Kill(id string) {
 }
 
 func (t *JaqenTCPListener) SendCommand(agent, command string) {
+	//ensure commands begin with a newline
 	if string(command[len(command)-1]) != "\n" {
 		command = command + "\n"
 	}
+	t.aMut.Lock()
 	t.agents[agent].inChan <- command
+	t.aMut.Unlock()
 }
 
 func (t *JaqenTCPListener) Start() error {
@@ -203,14 +186,8 @@ func (t JaqenTCPListener) GenerateAgentFormats() []string { return []string{} }
 func (t JaqenTCPListener) Generate(string) []byte         { return []byte{} }
 
 func (t JaqenTCPListener) GetInfo() server.ListenerInfo {
-
 	//copy the options map to avoid bad stuff
-	t.optionsMut.Lock()
-	newMap := make(map[string]string)
-	for k, v := range t.options {
-		newMap[k] = v
-	}
-	t.optionsMut.Unlock()
+	newMap := t.options.CloneMap()
 
 	return server.ListenerInfo{
 		Name:    t.GetName(),

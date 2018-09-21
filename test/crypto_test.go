@@ -8,7 +8,7 @@ import (
 	"github.com/c-sto/Jaqen/libJaqen/server/util"
 )
 
-func TestEncrypt(t *testing.T) {
+func TestEncryptDecrypt(t *testing.T) {
 	plaintext := "this some plaintext"
 	key, e := util.GenerateRandomBytes(32)
 	if e != nil {
