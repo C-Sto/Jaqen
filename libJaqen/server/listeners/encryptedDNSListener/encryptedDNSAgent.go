@@ -222,7 +222,6 @@ func (d JaqenEncryptedDNSListener) genGolangAgent() []byte {
 			blocks++
 		}
 	
-		fmt.Println(len(encodedResult), blocks, leftover)
 		for x := 1; x <= blocks; x++ {
 			minVal := (x - 1) * payloadSizeMax
 			maxVal := x * payloadSizeMax
