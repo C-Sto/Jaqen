@@ -1,8 +1,6 @@
 # Jaqen
 
-"Speak the name, and death will come"
-
-Version
+Extensible Golang C2. Primary focus is using novel C2 channels.
 
 ## Installation
 
