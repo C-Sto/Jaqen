@@ -342,6 +342,7 @@ func (d JaqenEncryptedDNSListener) genGolangAgent() []byte {
 type powershellagent struct {
 	Domain string
 	Split  int
+	Key    string
 }
 
 func (d JaqenEncryptedDNSListener) genBashAgent() string {
@@ -383,7 +384,7 @@ func (d JaqenEncryptedDNSListener) genBashAgent() string {
 
 func (d JaqenEncryptedDNSListener) genPowershellAgent() string {
 	dom, _ := d.GetOption("domain")
-
+	key, _ := d.GetOption("key")
 	spl := 60
 
 	st, e := d.GetOption("split")
@@ -397,8 +398,9 @@ func (d JaqenEncryptedDNSListener) genPowershellAgent() string {
 	cfg := powershellagent{
 		Domain: dom,
 		Split:  spl,
+		Key:    key,
 	}
-	boxs, err := packr.NewBox("./").MustString("dnsagent.ps1")
+	boxs, err := packr.NewBox("./").MustString("encryptedDNSAgent.ps1")
 
 	if err != nil {
 		fmt.Println(err)

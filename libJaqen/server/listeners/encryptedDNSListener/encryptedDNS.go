@@ -348,7 +348,7 @@ func (t JaqenEncryptedDNSListener) GetInfo() server.ListenerInfo {
 
 func (t JaqenEncryptedDNSListener) GenerateAgentFormats() []string {
 	return []string{
-		//"powershell",
+		"powershell",
 		"golang",
 		//"bash",
 	}
@@ -356,8 +356,8 @@ func (t JaqenEncryptedDNSListener) GenerateAgentFormats() []string {
 
 func (t JaqenEncryptedDNSListener) Generate(s string) []byte {
 	switch strings.ToLower(s) {
-	//case "powershell":
-	//return []byte(t.genPowershellAgent())
+	case "powershell":
+		return []byte(t.genPowershellAgent())
 	case "golang":
 		return t.genGolangAgent()
 		//case "bash":
