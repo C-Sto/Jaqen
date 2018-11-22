@@ -115,6 +115,8 @@ type AgentCode struct {
 	GetCommand,
 	ExecCommand,
 	SendResponse,
+	CmdExecTimeout,
+	CheckinMaxTime,
 	AVoidance string
 }
 

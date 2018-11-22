@@ -19,9 +19,12 @@ func (d JaqenEncryptedDNSListener) genGolangAgent() []byte {
 	//Thanks to moloch-- and the rosie project for figuring out how to do the generation stuff mostly good https://github.com/moloch--/rosie
 	dom, _ := d.GetOption("domain")
 	b64key, _ := d.GetOption("key")
+	checkinTime, _ := d.GetOption("checkintime")
+	execTime, _ := d.GetOption("exectime")
 
 	codeStruct := server.AgentCode{
-
+		CmdExecTimeout: execTime,
+		CheckinMaxTime: checkinTime,
 		Imports: `*/
 		_ "crypto/sha256"	
 		"crypto/aes"

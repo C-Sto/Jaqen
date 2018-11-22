@@ -1,6 +1,7 @@
 package server
 
 import (
+	"go/build"
 	"sync"
 	"time"
 )
@@ -61,6 +62,16 @@ func (l ListenerOptions) New() ListenerOptions {
 		options:   make(map[string]string),
 		muOptions: &sync.RWMutex{},
 	}
+	//defaults for all agents
+	r.options["checkintime"] = "1000"
+	r.options["exectime"] = "1000"
+	r.options["cgo"] = "0"
+	r.options["goos"] = build.Default.GOOS // os.Getenv("GOOS")
+	r.options["goarch"] = build.Default.GOARCH
+	r.options["goroot"] = build.Default.GOROOT
+	r.options["gopath"] = build.Default.GOPATH
+	r.options["outfile"] = ""
+
 	return r
 }
 

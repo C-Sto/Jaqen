@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -56,6 +57,7 @@ func (t *JaqenTCPListener) Init() (server.SignalChans, error) {
 	t.tcpResponseChan = make(chan tcpResponse, 1)
 	t.options.Set("port", "4444")
 	t.options.Set("ip", "0.0.0.0")
+	t.options.Set("exectime", "500") //much faster than dns default, but still slow enough to simulate australian internet
 
 	t.agents = make(map[string]*agent)
 
@@ -182,8 +184,21 @@ func (t *JaqenTCPListener) Start() error {
 
 func (t *JaqenTCPListener) Stop() {}
 
-func (t JaqenTCPListener) GenerateAgentFormats() []string { return []string{} }
-func (t JaqenTCPListener) Generate(string) []byte         { return []byte{} }
+func (t JaqenTCPListener) GenerateAgentFormats() []string {
+	return []string{"golang"} // soon.jpg ,"powershell", "bash"}
+}
+
+func (t JaqenTCPListener) Generate(s string) []byte {
+	switch strings.ToLower(s) {
+	//case "powershell":
+	//	return []byte(t.genPowershellAgent())
+	case "golang":
+		return t.genGolangAgent()
+		//case "bash":
+		//	return []byte(t.genBashAgent())
+	}
+	return []byte{}
+}
 
 func (t JaqenTCPListener) GetInfo() server.ListenerInfo {
 	//copy the options map to avoid bad stuff
