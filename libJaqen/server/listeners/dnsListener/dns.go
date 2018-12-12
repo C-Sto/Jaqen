@@ -72,6 +72,8 @@ func (d *JaqenDNSListener) Init() (server.SignalChans, error) {
 	d.ResponseChan = make(chan server.Command, 10)
 	d.options["domain"] = ""
 	d.options["split"] = "60"
+	d.options["checkintime"] = "10000"
+	d.options["exectime"] = "10000"
 
 	d.options["cgo"] = "0"
 	d.options["goos"] = build.Default.GOOS // os.Getenv("GOOS")

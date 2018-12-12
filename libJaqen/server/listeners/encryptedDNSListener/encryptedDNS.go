@@ -97,6 +97,8 @@ func (d *JaqenEncryptedDNSListener) Init() (server.SignalChans, error) {
 	d.ResponseChan = make(chan server.Command, 10)
 	d.options["domain"] = ""
 	d.options["split"] = "60"
+	d.options["checkintime"] = "10000"
+	d.options["exectime"] = "10000"
 	d.options["key"] = base64.StdEncoding.EncodeToString(key)
 	fmt.Println("DNS C2 Key: ", base64.StdEncoding.EncodeToString(key))
 

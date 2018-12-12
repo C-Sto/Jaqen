@@ -57,7 +57,8 @@ func (t *JaqenTCPListener) Init() (server.SignalChans, error) {
 	t.tcpResponseChan = make(chan tcpResponse, 1)
 	t.options.Set("port", "4444")
 	t.options.Set("ip", "0.0.0.0")
-	t.options.Set("exectime", "500") //much faster than dns default, but still slow enough to simulate australian internet
+	t.options.Set("exectime", "500")     //much faster than dns default, but still slow enough to simulate australian internet
+	t.options.Set("checkintime", "1000") //dunno fi this will even get used tbh
 
 	t.agents = make(map[string]*agent)
 
